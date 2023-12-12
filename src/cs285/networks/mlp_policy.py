@@ -4,6 +4,7 @@ from torch import nn
 
 import torch
 from torch import distributions
+from torch import optim
 
 import numpy as np
 
@@ -148,6 +149,11 @@ class MLPPolicyPG(nn.Module):
                     self.std = nn.Parameter(
                         torch.full((ac_dim,), 0.0, dtype=torch.float32, device=ptu.device)
                     )
+    
+        self.optimizer = optim.Adam(
+                self.net.parameters(),
+                5e-3,
+        )
 
     def forward(self, obs: torch.FloatTensor) -> distributions.Distribution:
         """

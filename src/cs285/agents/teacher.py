@@ -76,6 +76,12 @@ class TeacherPGAgent(nn.Module):
             obs, rewards, q_values, terminals
         )
 
+        # print("obs:", obs)
+        # print("actions:", actions)
+        # print("advantages:", advantages)
+        # print("q_values:", q_values)
+        # print("rewards:", rewards)
+
         # step 3: use all datapoints (s_t, a_t, adv_t) to update the PG actor/policy
         info: dict = self.actor.update(obs, actions, advantages)
 

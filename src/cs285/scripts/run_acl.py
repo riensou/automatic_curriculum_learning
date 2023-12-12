@@ -167,6 +167,8 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
         teacher_ac_dim,
         **config["teacher_kwargs"]
     )
+    teacher_trajectory = {"observation": [], "action": [], "reward": [], "terminal": []}
+    gradient_norms = []
 
     replay_buffer = ReplayBuffer(config["replay_buffer_capacity"])
 
@@ -177,6 +179,8 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
     else:
         observation = CONVERT_OBS(env.reset(options=options)[0])
 
+
+    # BEGIN TRAINING LOOP
     for step in tqdm.trange(config["total_steps"], dynamic_ncols=True):
         ep_steps += 1
         if step < config["random_steps"]:
@@ -231,11 +235,28 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
             update_info["actor_lr"] = agent.actor_lr_scheduler.get_last_lr()[0]
             update_info["critic_lr"] = agent.critic_lr_scheduler.get_last_lr()[0]
 
+            gradient_norms.append(update_info["gradient_norm"])
+
             if step % args.log_interval == 0:
                 for k, v in update_info.items():
                     logger.log_scalar(v, k, step)
                     logger.log_scalars
                 logger.flush()
+
+            if done or truncated:
+                teacher_trajectory["observation"].append(teacher_input)
+                teacher_trajectory["action"].append(teacher_output)
+                teacher_trajectory["reward"].append(np.mean(np.array(gradient_norms)))
+                teacher_trajectory["terminal"].append(False or (len(teacher_trajectory["observation"]) == args.teacher_batch_size))
+                gradient_norms = []
+
+
+            # Train the teacher
+            if len(teacher_trajectory["observation"]) == args.teacher_batch_size:
+                teacher_train_info: dict = teacher.update([teacher_trajectory["observation"]], [teacher_trajectory["action"]], [teacher_trajectory["reward"]], [teacher_trajectory["terminal"]])
+                teacher_trajectory = {"observation": [], "action": [], "reward": [], "terminal": []}
+                logger.log_scalar(teacher_train_info['Actor Loss'], "teacher_actor_loss", step)
+                logger.log_scalar(teacher_train_info['Baseline Loss'], "teacher_baseline_loss", step)
 
         # Run evaluation
         if step % args.eval_interval == 0:
@@ -290,7 +311,8 @@ def main():
     parser.add_argument("--which_gpu", "-g", default=0)
     parser.add_argument("--log_interval", type=int, default=1000)
 
-    parser.add_argument("--begin_teacher", "-bt", type=int, default=5000)
+    parser.add_argument("--begin_teacher", "-bt", type=int, default=0)
+    parser.add_argument("--teacher_batch_size", "-tbs", type=int, default=5)
 
     args = parser.parse_args()
 

@@ -294,9 +294,10 @@ class SoftActorCritic(nn.Module):
 
         self.actor_optimizer.zero_grad()
         loss.backward()
+        gradient_norm = torch.norm(torch.cat([param.grad.view(-1) for param in self.actor.parameters()]))
         self.actor_optimizer.step()
 
-        return {"actor_loss": loss.item(), "entropy": entropy.item()}
+        return {"actor_loss": loss.item(), "entropy": entropy.item(), "gradient_norm": gradient_norm.item()}
 
     def update_target_critic(self):
         self.soft_update_target_critic(1.0)
