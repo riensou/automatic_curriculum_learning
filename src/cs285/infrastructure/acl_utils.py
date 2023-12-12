@@ -13,13 +13,13 @@ from typing import Dict, Tuple, List
 CONVERT_OBS = lambda ob: np.hstack((ob['observation'], ob['desired_goal'], ob['achieved_goal']))
 
 def sample_trajectory(
-    env: gym.Env, policy: MLPPolicy, max_length: int, render: bool = False
+    env: gym.Env, policy: MLPPolicy, max_length: int, render: bool = False, options: dict = None
 ) -> Dict[str, np.ndarray]:
     """Sample a rollout in the environment from a policy."""
     if isinstance(env.observation_space, gym.spaces.box.Box):
-        ob = env.reset()[0]
+        ob = env.reset()[0] if not options else env.reset(options=options)[0]
     else:
-        ob = CONVERT_OBS(env.reset()[0])
+        ob = CONVERT_OBS(env.reset()[0]) if not options else CONVERT_OBS(env.reset(options=options)[0])
     obs, acs, rewards, next_obs, terminals, image_obs = [], [], [], [], [], []
     steps = 0
 
@@ -38,15 +38,12 @@ def sample_trajectory(
                 cv2.resize(img, dsize=(250, 250), interpolation=cv2.INTER_CUBIC)
             )
 
-        # TODO use the most recent ob to decide what to do
         ac = policy.get_action(ob)
 
-        # TODO: take that action and get reward and next ob
         next_ob, rew, done, _, info = env.step(ac)
         if not isinstance(env.observation_space, gym.spaces.Box):
             next_ob = CONVERT_OBS(next_ob)
 
-        # TODO rollout can end due to done, or due to max_length
         steps += 1
         rollout_done = done or steps > max_length  # HINT: this is either 0 or 1
 

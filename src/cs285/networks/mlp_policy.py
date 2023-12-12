@@ -5,6 +5,8 @@ from torch import nn
 import torch
 from torch import distributions
 
+import numpy as np
+
 from cs285.infrastructure import pytorch_util as ptu
 from cs285.infrastructure.distributions import make_tanh_transformed, make_multi_normal
 
@@ -92,3 +94,24 @@ class MLPPolicy(nn.Module):
 
         return action_distribution
  
+class MLPPolicyPG(MLPPolicy):
+    """Policy subclass for the policy gradient algorithm."""
+
+    def update(
+        self,
+        obs: np.ndarray,
+        actions: np.ndarray,
+        advantages: np.ndarray,
+    ) -> dict:
+        """Implements the policy gradient actor update."""
+        obs = ptu.from_numpy(obs)
+        actions = ptu.from_numpy(actions)
+        advantages = ptu.from_numpy(advantages)
+
+        loss = -1 * torch.mean(self(obs).log_prob(actions).T * advantages) 
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+        return {
+            "Actor Loss": ptu.to_numpy(loss),
+        }

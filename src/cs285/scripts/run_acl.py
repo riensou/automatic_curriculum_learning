@@ -3,6 +3,7 @@ import time
 import yaml
 
 from cs285.agents.soft_actor_critic import SoftActorCritic
+from cs285.agents.teacher import TeacherPGAgent
 from cs285.infrastructure.replay_buffer import ReplayBuffer
 import cs285.env_configs
 
@@ -24,6 +25,43 @@ from cs285.scripts.scripting_utils import make_logger, make_config
 import argparse
 
 CONVERT_OBS = lambda ob: np.hstack((ob['observation'], ob['desired_goal'], ob['achieved_goal']))
+
+def generate_start_state(env_name):
+    """
+    Generate options, start_state from env_name
+    """
+    start_state = None
+    options = None
+    if env_name == "PointMaze_Open-v3":
+        # PointMaze: {'goal_cell': numpy.ndarray, shape=(2,0), type=int, 'reset_cell': numpy.ndarray, shape=(2,0), type=int}
+        goal_cell = np.array([np.random.choice([1, 2, 3]), np.random.choice([1, 2, 3, 4, 5])])
+        reset_cell = np.array([np.random.choice([1, 2, 3]), np.random.choice([1, 2, 3, 4, 5])])
+        options = {'goal_cell': goal_cell, 'reset_cell': reset_cell}
+        start_state = np.hstack((goal_cell, reset_cell))
+    elif env_name == "AntMaze_Open-v4":
+        # AntMaze: {'goal_cell': numpy.ndarray, shape=(2,0), type=int, 'reset_cell': numpy.ndarray, shape=(2,0), type=int}
+        goal_cell = np.array([np.random.choice([1, 2, 3]), np.random.choice([1, 2, 3, 4, 5])])
+        reset_cell = np.array([np.random.choice([1, 2, 3]), np.random.choice([1, 2, 3, 4, 5])])
+        options = {'goal_cell': goal_cell, 'reset_cell': reset_cell}
+        start_state = np.hstack((goal_cell, reset_cell))
+    elif env_name == "AdroitHandHammer-v1":
+        # AdroitHammer: {'qpos': numpy.ndarray, shape=(33,), 'qvel': numpy.ndarray, shape=(33,), 'board_pos': numpy.ndarray, shape=(3,)}
+        qpos = np.zeros(33)
+        qvel = np.zeros(33)
+        board_pos = np.array([np.random.uniform(-0.2, 0.2), np.random.uniform(-0.2, 0.2), np.random.uniform(0.1, 0.25)])
+        options = {'qpos': qpos, 'qvel': qvel, 'board_pos': board_pos}
+        start_state = np.hstack((qpos, qvel, board_pos))
+    elif env_name == "AdroitHandRelocate-v1":
+        # AdroitRelocate: {'qpos': numpy.ndarray, shape=(36,), 'qvel': numpy.ndarray, shape=(36,), 'obj_pos': numpy.ndarray, shape=(3,), 'target_pos': numpy.ndarray, shape=(3,)}
+        qpos = np.zeros(36)
+        qvel = np.zeros(36)
+        obj_pos = np.array([np.random.uniform(-0.15, 0.15), np.random.uniform(-0.15, 0.30), 0])
+        target_pos = np.array([np.random.uniform(-0.2, 0.2), np.random.uniform(-0.2, 0.2), np.random.uniform(0.15, 0.35)])
+        options = {'qpos': qpos, 'qvel': qvel, 'obj_pos': obj_pos, 'targer_pos': target_pos}
+        start_state = np.hstack((qpos, qvel, obj_pos, target_pos))
+
+    return options, start_state
+
 
 def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
     # set random seeds
@@ -66,14 +104,46 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
         **config["agent_kwargs"],
     )
 
+    env_name = env.unwrapped.spec.id
+    assert env_name in ["PointMaze_Open-v3", "AntMaze_Open-v4", "AdroitHandHammer-v1", "AdroitHandRelocate-v1"]
+
+    teacher_ob_dim = None
+    teacher_ac_dim = None
+
+    if env_name == "PointMaze_Open-v3":
+        # PointMaze: {'goal_cell': numpy.ndarray, shape=(2,0), type=int, 'reset_cell': numpy.ndarray, shape=(2,0), type=int}
+        teacher_ac_dim = 2 + 2
+        teacher_ob_dim = teacher_ac_dim + 1
+    elif env_name == "AntMaze_Open-v4":
+        # AntMaze: {'goal_cell': numpy.ndarray, shape=(2,0), type=int, 'reset_cell': numpy.ndarray, shape=(2,0), type=int}
+        teacher_ac_dim = 2 + 2
+        teacher_ob_dim = teacher_ac_dim + 1
+    elif env_name == "AdroitHandHammer-v1":
+        # AdroitHammer: {'qpos': numpy.ndarray, shape=(33,), 'qvel': numpy.ndarray, shape=(33,), 'board_pos': numpy.ndarray, shape=(3,)}
+        teacher_ac_dim = 33 + 33 + 3
+        teacher_ob_dim = teacher_ac_dim + 1
+    elif env_name == "AdroitHandRelocate-v1":
+        # AdroitRelocate: {'qpos': numpy.ndarray, shape=(36,), 'qvel': numpy.ndarray, shape=(36,), 'obj_pos': numpy.ndarray, shape=(3,), 'target_pos': numpy.ndarray, shape=(3,)}
+        teacher_ac_dim = 36 + 36 + 3 + 3
+        teacher_ob_dim = teacher_ac_dim + 1
+
+    # IDEA: observation is the given task as well as the return achieved from the starting state
+    teacher = TeacherPGAgent(
+        teacher_ob_dim,
+        teacher_ac_dim,
+        **config["teacher_kwargs"]
+    )
+
     replay_buffer = ReplayBuffer(config["replay_buffer_capacity"])
 
+    ep_steps = 0
     if isinstance(env.observation_space, gym.spaces.Box):
         observation = env.reset()[0]
     else:
         observation = CONVERT_OBS(env.reset()[0])
 
     for step in tqdm.trange(config["total_steps"], dynamic_ncols=True):
+        ep_steps += 1
         if step < config["random_steps"]:
             action = env.action_space.sample()
         else:
@@ -83,7 +153,7 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
         next_observation, reward, done, _, info = env.step(action)
         if not isinstance(env.observation_space, gym.spaces.Box):
             next_observation = CONVERT_OBS(next_observation)
-        truncated = info.get("TimeLimit.truncated", False)
+        truncated = ep_steps > ep_len
         replay_buffer.insert(
             observation=observation,
             action=action,
@@ -93,12 +163,26 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
         )
 
         if done or truncated:
-            logger.log_scalar(info["episode"]["r"], "train_return", step)
-            logger.log_scalar(info["episode"]["l"], "train_ep_len", step)
+            # logger.log_scalar(info["episode"]["r"], "train_return", step)
+            # logger.log_scalar(info["episode"]["l"], "train_ep_len", step)
+
+            options = None
+
+            # if ready, update the teacher, generate a new starting state
+
+            # PointMaze: {'goal_cell': numpy.ndarray, shape=(2,0), type=int, 'reset_cell': numpy.ndarray, shape=(2,0), type=int}
+            # AntMaze: {'goal_cell': numpy.ndarray, shape=(2,0), type=int, 'reset_cell': numpy.ndarray, shape=(2,0), type=int}
+            # AdroitHammer: {'qpos': numpy.ndarray, shape=(33,), 'qvel': numpy.ndarray, shape=(33,), 'board_pos': numpy.ndarray, shape=(3,)}
+            # AdroitRelocate: {'qpos': numpy.ndarray, shape=(36,), 'qvel': numpy.ndarray, shape=(36,), 'obj_pos': numpy.ndarray, shape=(3,), 'target_pos': numpy.ndarray, shape=(3,)}
+
+            options, start_state = generate_start_state(env_name)
+            # print(options)
+
+            ep_steps = 0
             if isinstance(env.observation_space, gym.spaces.Box):
-                observation = env.reset()[0]
+                observation = env.reset()[0] if not options else env.reset(options=options)[0]
             else:
-                observation = CONVERT_OBS(env.reset()[0])
+                observation = CONVERT_OBS(env.reset()[0]) if not options else CONVERT_OBS(env.reset(options=options)[0])
         else:
             observation = next_observation
 

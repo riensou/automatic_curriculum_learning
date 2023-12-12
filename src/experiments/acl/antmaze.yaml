@@ -1,5 +1,5 @@
 base_config: acl
-env_name: AntMaze_UMaze-v4
+env_name: AntMaze_Open-v4
 exp_name: acl_antmaze
 
 num_critic_networks: 2
