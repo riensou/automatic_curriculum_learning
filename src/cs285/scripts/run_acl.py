@@ -32,13 +32,13 @@ def generate_start_state(env_name):
     """
     start_state = None
     options = None
-    if env_name == "PointMaze_Open-v3":
+    if env_name == "PointMaze_OpenDense-v3":
         # PointMaze: {'goal_cell': numpy.ndarray, shape=(2,0), type=int, 'reset_cell': numpy.ndarray, shape=(2,0), type=int}
         goal_cell = np.array([np.random.choice([1, 2, 3]), np.random.choice([1, 2, 3, 4, 5])])
         reset_cell = np.array([np.random.choice([1, 2, 3]), np.random.choice([1, 2, 3, 4, 5])])
         options = {'goal_cell': goal_cell, 'reset_cell': reset_cell}
         start_state = np.hstack((goal_cell, reset_cell))
-    elif env_name == "AntMaze_Open-v4":
+    elif env_name == "AntMaze_OpenDense-v4":
         # AntMaze: {'goal_cell': numpy.ndarray, shape=(2,0), type=int, 'reset_cell': numpy.ndarray, shape=(2,0), type=int}
         goal_cell = np.array([np.random.choice([1, 2, 3]), np.random.choice([1, 2, 3, 4, 5])])
         reset_cell = np.array([np.random.choice([1, 2, 3]), np.random.choice([1, 2, 3, 4, 5])])
@@ -68,13 +68,13 @@ def convert_teacher_to_start_state(teacher_output, env_name):
     """
     start_state = None
     options = None
-    if env_name == "PointMaze_Open-v3":
+    if env_name == "PointMaze_OpenDense-v3":
         # PointMaze: {'goal_cell': numpy.ndarray, shape=(2,0), type=int, 'reset_cell': numpy.ndarray, shape=(2,0), type=int}
         goal_cell = np.round(1 + ((1 + teacher_output[2:]) / 2) * (np.array([2, 4]))).astype(int)
         reset_cell = np.round(1 + ((1 + teacher_output[:2]) / 2) * (np.array([2, 4]))).astype(int)
         options = {'goal_cell': goal_cell, 'reset_cell': reset_cell}
         start_state = np.hstack((goal_cell, reset_cell))
-    elif env_name == "AntMaze_Open-v4":
+    elif env_name == "AntMaze_OpenDense-v4":
         # AntMaze: {'goal_cell': numpy.ndarray, shape=(2,0), type=int, 'reset_cell': numpy.ndarray, shape=(2,0), type=int}
         goal_cell = np.round(1 + ((1 + teacher_output[2:]) / 2) * (np.array([2, 4]))).astype(int)
         reset_cell = np.round(1 + ((1 + teacher_output[:2]) / 2) * (np.array([2, 4]))).astype(int)
@@ -140,16 +140,16 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
     )
 
     env_name = env.unwrapped.spec.id
-    assert env_name in ["PointMaze_Open-v3", "AntMaze_Open-v4", "AdroitHandHammer-v1", "AdroitHandRelocate-v1"]
+    assert env_name in ["PointMaze_OpenDense-v3", "AntMaze_OpenDense-v4", "AdroitHandHammer-v1", "AdroitHandRelocate-v1"]
 
     teacher_ob_dim = None
     teacher_ac_dim = None
 
-    if env_name == "PointMaze_Open-v3":
+    if env_name == "PointMaze_OpenDense-v3":
         # PointMaze: {'goal_cell': numpy.ndarray, shape=(2,0), type=int, 'reset_cell': numpy.ndarray, shape=(2,0), type=int}
         teacher_ac_dim = 2 + 2
         teacher_ob_dim = teacher_ac_dim + 1
-    elif env_name == "AntMaze_Open-v4":
+    elif env_name == "AntMaze_OpenDense-v4":
         # AntMaze: {'goal_cell': numpy.ndarray, shape=(2,0), type=int, 'reset_cell': numpy.ndarray, shape=(2,0), type=int}
         teacher_ac_dim = 2 + 2
         teacher_ob_dim = teacher_ac_dim + 1
@@ -162,7 +162,6 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
         teacher_ac_dim = 36 + 36 + 3 + 3
         teacher_ob_dim = teacher_ac_dim + 1
 
-    # IDEA: observation is the given task as well as the return achieved from the starting state
     teacher = TeacherPGAgent(
         teacher_ob_dim,
         teacher_ac_dim,
@@ -172,10 +171,11 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
     replay_buffer = ReplayBuffer(config["replay_buffer_capacity"])
 
     ep_steps, current_return = 0, 0
+    options, start_state = generate_start_state(env_name)
     if isinstance(env.observation_space, gym.spaces.Box):
-        observation = env.reset()[0]
+        observation = env.reset(options=options)[0]
     else:
-        observation = CONVERT_OBS(env.reset()[0])
+        observation = CONVERT_OBS(env.reset(options=options)[0])
 
     for step in tqdm.trange(config["total_steps"], dynamic_ncols=True):
         ep_steps += 1
@@ -199,16 +199,18 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
         )
 
         if done or truncated:
-            # logger.log_scalar(info["episode"]["r"], "train_return", step)
-            # logger.log_scalar(info["episode"]["l"], "train_ep_len", step)
+            if env_name == "AntMaze_OpenDense-v4":
+                logger.log_scalar(info["reward_forward"], "reward_forward", step)
+                logger.log_scalar(info["reward_ctrl"], "reward_ctrl", step)
+                logger.log_scalar(info["reward_survive"], "reward_survive", step)
+            logger.log_scalar(current_return, "train_return", step)
 
             options = None
 
-            # if ready, update the teacher, generate a new starting state TODO: make a new argument
-            if step < 5000:
+            teacher_input = np.hstack((np.array([current_return]), start_state))
+            if step < args.begin_teacher:
                 options, start_state = generate_start_state(env_name)
             else: 
-                teacher_input = np.hstack((np.array([current_return]), start_state))
                 teacher_output = teacher.actor.get_action(teacher_input)
                 options, start_state = convert_teacher_to_start_state(teacher_output, env_name)
 
@@ -287,6 +289,8 @@ def main():
     parser.add_argument("--no_gpu", "-ngpu", action="store_true")
     parser.add_argument("--which_gpu", "-g", default=0)
     parser.add_argument("--log_interval", type=int, default=1000)
+
+    parser.add_argument("--begin_teacher", "-bt", type=int, default=5000)
 
     args = parser.parse_args()
 

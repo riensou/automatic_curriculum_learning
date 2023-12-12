@@ -1,5 +1,5 @@
 base_config: acl
-env_name: PointMaze_Open-v3
+env_name: PointMaze_OpenDense-v3
 exp_name: acl_pointmaze
 
 num_critic_networks: 2
