@@ -62,6 +62,41 @@ def generate_start_state(env_name):
 
     return options, start_state
 
+def convert_teacher_to_start_state(teacher_output, env_name):
+    """
+    Convert teacher_output to start_state, options. Note that the range of each element in teacher_output is in (-1, 1).
+    """
+    start_state = None
+    options = None
+    if env_name == "PointMaze_Open-v3":
+        # PointMaze: {'goal_cell': numpy.ndarray, shape=(2,0), type=int, 'reset_cell': numpy.ndarray, shape=(2,0), type=int}
+        goal_cell = np.round(1 + ((1 + teacher_output[2:]) / 2) * (np.array([2, 4]))).astype(int)
+        reset_cell = np.round(1 + ((1 + teacher_output[:2]) / 2) * (np.array([2, 4]))).astype(int)
+        options = {'goal_cell': goal_cell, 'reset_cell': reset_cell}
+        start_state = np.hstack((goal_cell, reset_cell))
+    elif env_name == "AntMaze_Open-v4":
+        # AntMaze: {'goal_cell': numpy.ndarray, shape=(2,0), type=int, 'reset_cell': numpy.ndarray, shape=(2,0), type=int}
+        goal_cell = np.round(1 + ((1 + teacher_output[2:]) / 2) * (np.array([2, 4]))).astype(int)
+        reset_cell = np.round(1 + ((1 + teacher_output[:2]) / 2) * (np.array([2, 4]))).astype(int)
+        options = {'goal_cell': goal_cell, 'reset_cell': reset_cell}
+        start_state = np.hstack((goal_cell, reset_cell))
+    elif env_name == "AdroitHandHammer-v1":
+        # AdroitHammer: {'qpos': numpy.ndarray, shape=(33,), 'qvel': numpy.ndarray, shape=(33,), 'board_pos': numpy.ndarray, shape=(3,)}
+        qpos = ...
+        qvel = ...
+        board_pos = ...
+        options = {'qpos': qpos, 'qvel': qvel, 'board_pos': board_pos}
+        start_state = np.hstack((qpos, qvel, board_pos))
+    elif env_name == "AdroitHandRelocate-v1":
+        # AdroitRelocate: {'qpos': numpy.ndarray, shape=(36,), 'qvel': numpy.ndarray, shape=(36,), 'obj_pos': numpy.ndarray, shape=(3,), 'target_pos': numpy.ndarray, shape=(3,)}
+        qpos = ...
+        qvel = ...
+        obj_pos = ...
+        target_pos = ...
+        options = {'qpos': qpos, 'qvel': qvel, 'obj_pos': obj_pos, 'targer_pos': target_pos}
+        start_state = np.hstack((qpos, qvel, obj_pos, target_pos))
+
+    return options, start_state
 
 def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
     # set random seeds
@@ -136,7 +171,7 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
 
     replay_buffer = ReplayBuffer(config["replay_buffer_capacity"])
 
-    ep_steps = 0
+    ep_steps, current_return = 0, 0
     if isinstance(env.observation_space, gym.spaces.Box):
         observation = env.reset()[0]
     else:
@@ -151,6 +186,7 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
 
         # Step the environment and add the data to the replay buffer
         next_observation, reward, done, _, info = env.step(action)
+        current_return += reward
         if not isinstance(env.observation_space, gym.spaces.Box):
             next_observation = CONVERT_OBS(next_observation)
         truncated = ep_steps > ep_len
@@ -168,17 +204,15 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
 
             options = None
 
-            # if ready, update the teacher, generate a new starting state
+            # if ready, update the teacher, generate a new starting state TODO: make a new argument
+            if step < 5000:
+                options, start_state = generate_start_state(env_name)
+            else: 
+                teacher_input = np.hstack((np.array([current_return]), start_state))
+                teacher_output = teacher.actor.get_action(teacher_input)
+                options, start_state = convert_teacher_to_start_state(teacher_output, env_name)
 
-            # PointMaze: {'goal_cell': numpy.ndarray, shape=(2,0), type=int, 'reset_cell': numpy.ndarray, shape=(2,0), type=int}
-            # AntMaze: {'goal_cell': numpy.ndarray, shape=(2,0), type=int, 'reset_cell': numpy.ndarray, shape=(2,0), type=int}
-            # AdroitHammer: {'qpos': numpy.ndarray, shape=(33,), 'qvel': numpy.ndarray, shape=(33,), 'board_pos': numpy.ndarray, shape=(3,)}
-            # AdroitRelocate: {'qpos': numpy.ndarray, shape=(36,), 'qvel': numpy.ndarray, shape=(36,), 'obj_pos': numpy.ndarray, shape=(3,), 'target_pos': numpy.ndarray, shape=(3,)}
-
-            options, start_state = generate_start_state(env_name)
-            # print(options)
-
-            ep_steps = 0
+            ep_steps, current_return = 0, 0
             if isinstance(env.observation_space, gym.spaces.Box):
                 observation = env.reset()[0] if not options else env.reset(options=options)[0]
             else:
