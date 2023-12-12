@@ -36,4 +36,4 @@ tensorboard --logdir data/run1,data/run2,data/run3...
 ```
 # Background
 
-<img width="612" alt="acl_diagram" src="https://github.com/riensou/automatic_curriculum_learning/assets/90002238/084a3ff0-6313-439a-a3d5-71296e2f768d">
+<img width="615" alt="acl_diagram" src="https://github.com/riensou/automatic_curriculum_learning/assets/90002238/4d7d9a20-8bf1-4cf9-8395-a79b29b1895a">
