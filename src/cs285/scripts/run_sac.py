@@ -67,7 +67,6 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
         if step < config["random_steps"]:
             action = env.action_space.sample()
         else:
-            # TODO(student): Select an action
             action = agent.get_action(observation)
 
         # Step the environment and add the data to the replay buffer
@@ -89,7 +88,6 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
 
         # Train the agent
         if step >= config["training_starts"]:
-            # TODO(student): Sample a batch of config["batch_size"] transitions from the replay buffer
             batch = replay_buffer.sample(config['batch_size'])
             update_info = agent.update(batch["observations"], batch["actions"], batch["rewards"], batch["next_observations"], batch["dones"], step)
 

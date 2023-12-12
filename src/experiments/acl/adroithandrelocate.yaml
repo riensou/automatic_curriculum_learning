@@ -1,5 +1,5 @@
 base_config: acl
-env_name: AdroitHandHammer-v1
+env_name: AdroitHandRelocate-v1
 exp_name: acl_adroithandrelocate
 
 num_critic_networks: 2
