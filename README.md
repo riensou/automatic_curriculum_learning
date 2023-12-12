@@ -1,4 +1,4 @@
-# SETUP
+# Setup
 
 1. Create a conda environment that will contain python 3:
 ```
@@ -21,7 +21,7 @@ pip install -r requirements.txt
 $ pip install -e .
 ```
 
-# VISUALIZING WITH TENSORBOARD
+# Visualizing with Tensorboard
 
 You can visualize your runs using tensorboard:
 ```
