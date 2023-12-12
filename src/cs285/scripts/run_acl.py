@@ -70,29 +70,29 @@ def convert_teacher_to_start_state(teacher_output, env_name):
     options = None
     if env_name == "PointMaze_OpenDense-v3":
         # PointMaze: {'goal_cell': numpy.ndarray, shape=(2,0), type=int, 'reset_cell': numpy.ndarray, shape=(2,0), type=int}
-        goal_cell = np.round(1 + ((1 + teacher_output[2:]) / 2) * (np.array([2, 4]))).astype(int)
-        reset_cell = np.round(1 + ((1 + teacher_output[:2]) / 2) * (np.array([2, 4]))).astype(int)
+        goal_cell = np.round(1 + ((1 + teacher_output[:2]) / 2) * (np.array([2, 4]))).astype(int)
+        reset_cell = np.round(1 + ((1 + teacher_output[2:]) / 2) * (np.array([2, 4]))).astype(int)
         options = {'goal_cell': goal_cell, 'reset_cell': reset_cell}
         start_state = np.hstack((goal_cell, reset_cell))
     elif env_name == "AntMaze_OpenDense-v4":
         # AntMaze: {'goal_cell': numpy.ndarray, shape=(2,0), type=int, 'reset_cell': numpy.ndarray, shape=(2,0), type=int}
-        goal_cell = np.round(1 + ((1 + teacher_output[2:]) / 2) * (np.array([2, 4]))).astype(int)
-        reset_cell = np.round(1 + ((1 + teacher_output[:2]) / 2) * (np.array([2, 4]))).astype(int)
+        goal_cell = np.round(1 + ((1 + teacher_output[:2]) / 2) * (np.array([2, 4]))).astype(int)
+        reset_cell = np.round(1 + ((1 + teacher_output[2:]) / 2) * (np.array([2, 4]))).astype(int)
         options = {'goal_cell': goal_cell, 'reset_cell': reset_cell}
         start_state = np.hstack((goal_cell, reset_cell))
     elif env_name == "AdroitHandHammer-v1":
         # AdroitHammer: {'qpos': numpy.ndarray, shape=(33,), 'qvel': numpy.ndarray, shape=(33,), 'board_pos': numpy.ndarray, shape=(3,)}
-        qpos = ...
-        qvel = ...
-        board_pos = ...
+        qpos = teacher_output[:33]
+        qvel = teacher_output[33:66]
+        board_pos = teacher_output[66:]
         options = {'qpos': qpos, 'qvel': qvel, 'board_pos': board_pos}
         start_state = np.hstack((qpos, qvel, board_pos))
     elif env_name == "AdroitHandRelocate-v1":
         # AdroitRelocate: {'qpos': numpy.ndarray, shape=(36,), 'qvel': numpy.ndarray, shape=(36,), 'obj_pos': numpy.ndarray, shape=(3,), 'target_pos': numpy.ndarray, shape=(3,)}
-        qpos = ...
-        qvel = ...
-        obj_pos = ...
-        target_pos = ...
+        qpos = teacher_output[:36]
+        qvel = teacher_output[36:72]
+        obj_pos = teacher_output[72:75]
+        target_pos = teacher_output[75:]
         options = {'qpos': qpos, 'qvel': qvel, 'obj_pos': obj_pos, 'targer_pos': target_pos}
         start_state = np.hstack((qpos, qvel, obj_pos, target_pos))
 
@@ -142,33 +142,35 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
     env_name = env.unwrapped.spec.id
     assert env_name in ["PointMaze_OpenDense-v3", "AntMaze_OpenDense-v4", "AdroitHandHammer-v1", "AdroitHandRelocate-v1"]
 
-    teacher_ob_dim = None
-    teacher_ac_dim = None
+    if args.use_teacher:
 
-    if env_name == "PointMaze_OpenDense-v3":
-        # PointMaze: {'goal_cell': numpy.ndarray, shape=(2,0), type=int, 'reset_cell': numpy.ndarray, shape=(2,0), type=int}
-        teacher_ac_dim = 2 + 2
-        teacher_ob_dim = teacher_ac_dim + 1
-    elif env_name == "AntMaze_OpenDense-v4":
-        # AntMaze: {'goal_cell': numpy.ndarray, shape=(2,0), type=int, 'reset_cell': numpy.ndarray, shape=(2,0), type=int}
-        teacher_ac_dim = 2 + 2
-        teacher_ob_dim = teacher_ac_dim + 1
-    elif env_name == "AdroitHandHammer-v1":
-        # AdroitHammer: {'qpos': numpy.ndarray, shape=(33,), 'qvel': numpy.ndarray, shape=(33,), 'board_pos': numpy.ndarray, shape=(3,)}
-        teacher_ac_dim = 33 + 33 + 3
-        teacher_ob_dim = teacher_ac_dim + 1
-    elif env_name == "AdroitHandRelocate-v1":
-        # AdroitRelocate: {'qpos': numpy.ndarray, shape=(36,), 'qvel': numpy.ndarray, shape=(36,), 'obj_pos': numpy.ndarray, shape=(3,), 'target_pos': numpy.ndarray, shape=(3,)}
-        teacher_ac_dim = 36 + 36 + 3 + 3
-        teacher_ob_dim = teacher_ac_dim + 1
+        teacher_ob_dim = None
+        teacher_ac_dim = None
 
-    teacher = TeacherPGAgent(
-        teacher_ob_dim,
-        teacher_ac_dim,
-        **config["teacher_kwargs"]
-    )
-    teacher_trajectory = {"observation": [], "action": [], "reward": [], "terminal": []}
-    gradient_norms = []
+        if env_name == "PointMaze_OpenDense-v3":
+            # PointMaze: {'goal_cell': numpy.ndarray, shape=(2,0), type=int, 'reset_cell': numpy.ndarray, shape=(2,0), type=int}
+            teacher_ac_dim = 2 + 2
+            teacher_ob_dim = teacher_ac_dim + 1
+        elif env_name == "AntMaze_OpenDense-v4":
+            # AntMaze: {'goal_cell': numpy.ndarray, shape=(2,0), type=int, 'reset_cell': numpy.ndarray, shape=(2,0), type=int}
+            teacher_ac_dim = 2 + 2
+            teacher_ob_dim = teacher_ac_dim + 1
+        elif env_name == "AdroitHandHammer-v1":
+            # AdroitHammer: {'qpos': numpy.ndarray, shape=(33,), 'qvel': numpy.ndarray, shape=(33,), 'board_pos': numpy.ndarray, shape=(3,)}
+            teacher_ac_dim = 33 + 33 + 3
+            teacher_ob_dim = teacher_ac_dim + 1
+        elif env_name == "AdroitHandRelocate-v1":
+            # AdroitRelocate: {'qpos': numpy.ndarray, shape=(36,), 'qvel': numpy.ndarray, shape=(36,), 'obj_pos': numpy.ndarray, shape=(3,), 'target_pos': numpy.ndarray, shape=(3,)}
+            teacher_ac_dim = 36 + 36 + 3 + 3
+            teacher_ob_dim = teacher_ac_dim + 1
+
+        teacher = TeacherPGAgent(
+            teacher_ob_dim,
+            teacher_ac_dim,
+            **config["teacher_kwargs"]
+        )
+        teacher_trajectory = {"observation": [], "action": [], "reward": [], "terminal": []}
+        gradient_norms = []
 
     replay_buffer = ReplayBuffer(config["replay_buffer_capacity"])
 
@@ -212,13 +214,14 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
             options = None
 
             teacher_input = np.hstack((np.array([current_return]), start_state))
-            if step < args.begin_teacher:
+            if (not args.use_teacher) or step < args.begin_teacher:
                 options, start_state = generate_start_state(env_name)
             else: 
                 teacher_output = teacher.actor.get_action(teacher_input)
                 options, start_state = convert_teacher_to_start_state(teacher_output, env_name)
 
             ep_steps, current_return = 0, 0
+            if not args.use_teacher: options = None
             if isinstance(env.observation_space, gym.spaces.Box):
                 observation = env.reset()[0] if not options else env.reset(options=options)[0]
             else:
@@ -243,20 +246,21 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
                     logger.log_scalars
                 logger.flush()
 
-            if done or truncated:
-                teacher_trajectory["observation"].append(teacher_input)
-                teacher_trajectory["action"].append(teacher_output)
-                teacher_trajectory["reward"].append(np.mean(np.array(gradient_norms)))
-                teacher_trajectory["terminal"].append(False or (len(teacher_trajectory["observation"]) == args.teacher_batch_size))
-                gradient_norms = []
+            if args.use_teacher:
 
+                if done or truncated:
+                    teacher_trajectory["observation"].append(teacher_input)
+                    teacher_trajectory["action"].append(teacher_output)
+                    teacher_trajectory["reward"].append(np.mean(np.array(gradient_norms)))
+                    teacher_trajectory["terminal"].append(False or (len(teacher_trajectory["observation"]) == args.teacher_batch_size))
+                    gradient_norms = []
 
-            # Train the teacher
-            if len(teacher_trajectory["observation"]) == args.teacher_batch_size:
-                teacher_train_info: dict = teacher.update([teacher_trajectory["observation"]], [teacher_trajectory["action"]], [teacher_trajectory["reward"]], [teacher_trajectory["terminal"]])
-                teacher_trajectory = {"observation": [], "action": [], "reward": [], "terminal": []}
-                logger.log_scalar(teacher_train_info['Actor Loss'], "teacher_actor_loss", step)
-                logger.log_scalar(teacher_train_info['Baseline Loss'], "teacher_baseline_loss", step)
+                # Train the teacher
+                if len(teacher_trajectory["observation"]) == args.teacher_batch_size:
+                    teacher_train_info: dict = teacher.update([teacher_trajectory["observation"]], [teacher_trajectory["action"]], [teacher_trajectory["reward"]], [teacher_trajectory["terminal"]])
+                    teacher_trajectory = {"observation": [], "action": [], "reward": [], "terminal": []}
+                    logger.log_scalar(teacher_train_info['Actor Loss'], "teacher_actor_loss", step)
+                    logger.log_scalar(teacher_train_info['Baseline Loss'], "teacher_baseline_loss", step)
 
         # Run evaluation
         if step % args.eval_interval == 0:
@@ -311,6 +315,7 @@ def main():
     parser.add_argument("--which_gpu", "-g", default=0)
     parser.add_argument("--log_interval", type=int, default=1000)
 
+    parser.add_argument("--use_teacher", "-ut", type=bool, default=True)
     parser.add_argument("--begin_teacher", "-bt", type=int, default=0)
     parser.add_argument("--teacher_batch_size", "-tbs", type=int, default=5)
 
