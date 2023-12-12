@@ -34,3 +34,6 @@ You can choose to visualize specific runs with a comma-separated list:
 ```
 tensorboard --logdir data/run1,data/run2,data/run3...
 ```
+# Automatic Curriculum Learning
+
+[acl_diagram_1.pdf](https://github.com/riensou/automatic_curriculum_learning/files/13653144/acl_diagram_1.pdf)
