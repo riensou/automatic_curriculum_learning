@@ -170,7 +170,7 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
             **config["teacher_kwargs"]
         )
         teacher_trajectory = {"observation": [], "action": [], "reward": [], "terminal": []}
-        gradient_norms = []
+        gradient_norms, gradients = [], []
         teacher_step = 0
 
     replay_buffer = ReplayBuffer(config["replay_buffer_capacity"])
@@ -245,6 +245,9 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
 
             if args.use_teacher:
                 gradient_norms.append(update_info["gradient_norm"])
+                if args.use_alternative_gradient:
+                    gradients.append(update_info["gradient"])
+                    del update_info["gradient"]
 
             if step % args.log_interval == 0:
                 for k, v in update_info.items():
@@ -259,9 +262,12 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
                         replay_buffer.clear()
                     teacher_trajectory["observation"].append(teacher_input)
                     teacher_trajectory["action"].append(teacher_output)
-                    teacher_trajectory["reward"].append(np.mean(np.array(gradient_norms)))
+                    if args.use_alternative_gradient:
+                        teacher_trajectory["reward"].append((1 / len(gradients)) * torch.norm(torch.sum(torch.stack([torch.cat(g) for g in gradients]), dim=0)))
+                    else:
+                        teacher_trajectory["reward"].append(np.mean(np.array(gradient_norms)))
                     teacher_trajectory["terminal"].append(False or (len(teacher_trajectory["observation"]) == args.teacher_batch_size))
-                    gradient_norms = []
+                    gradient_norms, gradients = [], []
 
                 # Train the teacher
                 if len(teacher_trajectory["observation"]) == args.teacher_batch_size:
@@ -332,6 +338,7 @@ def main():
     parser.add_argument("--teacher_updates", "-tu", type=int, default=1)
 
     parser.add_argument("--clear_buffer", "-cb", type=int, default=0)
+    parser.add_argument("--use_alternative_gradient", "-uag", type=int, default=0)
 
     args = parser.parse_args()
 
