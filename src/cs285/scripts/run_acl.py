@@ -247,7 +247,7 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
                 gradient_norms.append(update_info["gradient_norm"])
                 if args.use_alternative_gradient:
                     gradients.append(update_info["gradient"])
-                    del update_info["gradient"]
+            del update_info["gradient"]
 
             if step % args.log_interval == 0:
                 for k, v in update_info.items():
