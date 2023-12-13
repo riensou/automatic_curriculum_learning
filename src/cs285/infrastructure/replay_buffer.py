@@ -11,6 +11,14 @@ class ReplayBuffer:
         self.next_observations = None
         self.dones = None
 
+    def clear(self):
+        self.size = 0
+        self.observations = None
+        self.actions = None
+        self.rewards = None
+        self.next_observations = None
+        self.dones = None
+
     def sample(self, batch_size):
         rand_indices = np.random.randint(0, self.size, size=(batch_size,)) % self.max_size
         return {

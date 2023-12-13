@@ -24,7 +24,7 @@ def acl_config(
     critic_learning_rate: float = 3e-4,
     total_steps: int = 300000,
     random_steps: int = 5000,
-    training_starts: int = 10000,
+    training_starts: int = 0, # CHANGE THIS BACK TO 10000 MAYBE
     batch_size: int = 128,
     replay_buffer_capacity: int = 1000000,
     ep_len: Optional[int] = None,

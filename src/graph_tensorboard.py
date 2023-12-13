@@ -59,8 +59,21 @@ def plot_scalars(ax: plt.Axes,
                  data_key: str,
                  name: str,
                  color: str,
-                 title=""):
-    ax.plot(scalars[data_key]['step'], scalars[data_key]['value'], color=color, label=name)
+                 title="",
+                 smooth_factor=None):
+    if not smooth_factor:
+        ax.plot(scalars[data_key]['step'], scalars[data_key]['value'], color=color, label=name)
+    else:
+        values = scalars[data_key]['value']
+        num_points = len(values)
+        smoothed_values = [values[0]]  # Initialize with the first value
+
+        for i in range(1, num_points):
+            smoothed_value = smoothed_values[-1] * smooth_factor + values[i] * (1 - smooth_factor)
+            smoothed_values.append(smoothed_value)
+
+        steps = scalars[data_key]['step'][:num_points]
+        ax.plot(steps, smoothed_values, color=color, label=name)
     ax.set_xlabel('environment steps')
     ax.set_ylabel(data_key)
     ax.set_title(title)
@@ -76,6 +89,7 @@ if __name__ == '__main__':
     parser.add_argument("--data_key", "-d", type=str, required=True)
     parser.add_argument("--title", "-t", type=str, required=True)
     parser.add_argument("--plot_mean_std", "-std", action="store_true")
+    parser.add_argument("--smoothing", "-s", type=float, default=0)
     args = parser.parse_args()
 
     has_names = True
@@ -112,7 +126,7 @@ if __name__ == '__main__':
             except KeyError:
                 ...
             if not args.plot_mean_std:
-                plot_scalars(plt.gca(), scalars, args.data_key, name, color, args.title)
+                plot_scalars(plt.gca(), scalars, args.data_key, name, color, args.title, args.smoothing)
 
     if has_names:
         plt.legend()

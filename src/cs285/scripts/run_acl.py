@@ -57,7 +57,7 @@ def generate_start_state(env_name):
         qvel = np.zeros(36)
         obj_pos = np.array([np.random.uniform(-0.15, 0.15), np.random.uniform(-0.15, 0.30), 0])
         target_pos = np.array([np.random.uniform(-0.2, 0.2), np.random.uniform(-0.2, 0.2), np.random.uniform(0.15, 0.35)])
-        options = {'qpos': qpos, 'qvel': qvel, 'obj_pos': obj_pos, 'targer_pos': target_pos}
+        options = {'qpos': qpos, 'qvel': qvel, 'obj_pos': obj_pos, 'target_pos': target_pos}
         start_state = np.hstack((qpos, qvel, obj_pos, target_pos))
 
     return options, start_state
@@ -93,7 +93,7 @@ def convert_teacher_to_start_state(teacher_output, env_name):
         qvel = teacher_output[36:72]
         obj_pos = teacher_output[72:75]
         target_pos = teacher_output[75:]
-        options = {'qpos': qpos, 'qvel': qvel, 'obj_pos': obj_pos, 'targer_pos': target_pos}
+        options = {'qpos': qpos, 'qvel': qvel, 'obj_pos': obj_pos, 'target_pos': target_pos}
         start_state = np.hstack((qpos, qvel, obj_pos, target_pos))
 
     return options, start_state
@@ -171,6 +171,7 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
         )
         teacher_trajectory = {"observation": [], "action": [], "reward": [], "terminal": []}
         gradient_norms = []
+        teacher_step = 0
 
     replay_buffer = ReplayBuffer(config["replay_buffer_capacity"])
 
@@ -219,6 +220,10 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
             else: 
                 teacher_output = teacher.actor.get_action(teacher_input)
                 options, start_state = convert_teacher_to_start_state(teacher_output, env_name)
+                if env_name in ["PointMaze_OpenDense-v3", "AntMaze_OpenDense-v4"]:
+                    logger.log_scalar(np.linalg.norm(options['goal_cell'] - options['reset_cell']), "teacher_goal_distance", step)
+                if env_name in ["AdroitHandRelocate-v1"]:
+                    logger.log_scalar(np.linalg.norm(options['obj_pos'] - options['target_pos']), "teacher_goal_distance", step)
 
             ep_steps, current_return = 0, 0
             if not args.use_teacher: options = None
@@ -238,7 +243,8 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
             update_info["actor_lr"] = agent.actor_lr_scheduler.get_last_lr()[0]
             update_info["critic_lr"] = agent.critic_lr_scheduler.get_last_lr()[0]
 
-            gradient_norms.append(update_info["gradient_norm"])
+            if args.use_teacher:
+                gradient_norms.append(update_info["gradient_norm"])
 
             if step % args.log_interval == 0:
                 for k, v in update_info.items():
@@ -249,6 +255,8 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
             if args.use_teacher:
 
                 if done or truncated:
+                    if args.clear_buffer:
+                        replay_buffer.clear()
                     teacher_trajectory["observation"].append(teacher_input)
                     teacher_trajectory["action"].append(teacher_output)
                     teacher_trajectory["reward"].append(np.mean(np.array(gradient_norms)))
@@ -257,10 +265,13 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
 
                 # Train the teacher
                 if len(teacher_trajectory["observation"]) == args.teacher_batch_size:
-                    teacher_train_info: dict = teacher.update([teacher_trajectory["observation"]], [teacher_trajectory["action"]], [teacher_trajectory["reward"]], [teacher_trajectory["terminal"]])
+                    teacher_train_info: dict = {}
+                    for _ in range(args.teacher_updates):
+                        teacher_train_info = teacher.update([teacher_trajectory["observation"]], [teacher_trajectory["action"]], [teacher_trajectory["reward"]], [teacher_trajectory["terminal"]])
+                        logger.log_scalar(teacher_train_info['Actor Loss'], "teacher_actor_loss", teacher_step)
+                        logger.log_scalar(teacher_train_info['Baseline Loss'], "teacher_baseline_loss", teacher_step)
+                        teacher_step += 1
                     teacher_trajectory = {"observation": [], "action": [], "reward": [], "terminal": []}
-                    logger.log_scalar(teacher_train_info['Actor Loss'], "teacher_actor_loss", step)
-                    logger.log_scalar(teacher_train_info['Baseline Loss'], "teacher_baseline_loss", step)
 
         # Run evaluation
         if step % args.eval_interval == 0:
@@ -315,9 +326,12 @@ def main():
     parser.add_argument("--which_gpu", "-g", default=0)
     parser.add_argument("--log_interval", type=int, default=1000)
 
-    parser.add_argument("--use_teacher", "-ut", type=bool, default=True)
+    parser.add_argument("--use_teacher", "-ut", type=int, default=1)
     parser.add_argument("--begin_teacher", "-bt", type=int, default=0)
     parser.add_argument("--teacher_batch_size", "-tbs", type=int, default=5)
+    parser.add_argument("--teacher_updates", "-tu", type=int, default=1)
+
+    parser.add_argument("--clear_buffer", "-cb", type=int, default=0)
 
     args = parser.parse_args()
 
