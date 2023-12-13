@@ -60,14 +60,14 @@ python cs285/scripts/run_acl.py -cfg experiments/acl/<experiment>
 ```
 
 The following are potential flags to be used for experiments:
-| Flag Description                                               | Flag Name                           | Default Value |
-|----------------------------------------------------------------|-------------------------------------|---------------|
-| Enables the use of a teacher to generate initial states        | `--use_teacher`                     | 1             |
-| Specifies when to start using the teacher                      | `--begin_teacher`                   | 0             |
-| Specifies how many examples from the student the teacher uses  | `--teacher_batch_size`              | 5             |
-| Specifies how many update steps the teacher takes              | `--teacher_updates`                 | 1             |
-| Enables the replay buffer clearing every teacher update        | `--clear_buffer`                    | 0             |
-| Enables the use of the 'overall' instead of 'average' gradient | `--use_alternative_gradient`        | 0             |
+| Flag Description                                               | Flag Name               | Default Value |
+|----------------------------------------------------------------|-------------------------|---------------|
+| Enables the use of a teacher to generate initial states        | `--use_teacher`         | 1             |
+| Specifies when to start using the teacher                      | `--begin_teacher`       | 0             |
+| Specifies how many examples from the student the teacher uses  | `--teacher_batch_size`  | 5             |
+| Specifies how many update steps the teacher takes              | `--teacher_updates`     | 1             |
+| Enables the replay buffer clearing every teacher update        | `--clear_buffer`        | 0             |
+| Enables the use of the 'overall' instead of 'average' gradient | `-uag`                  | 0             |
 
 Use the following command to visualize the results of the experiments.
 ```
